@@ -227,7 +227,6 @@ def extract_text_from_image(image, model_name, prompt):
                 torch.cuda.empty_cache()
 
     gc.collect()  # Python garbage collection
-"Summarize the content of the image."
     return text_segments
 
 # Route to serve uploaded files
