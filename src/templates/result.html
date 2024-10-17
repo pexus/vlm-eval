@@ -1,0 +1,27 @@
+<!-- result.html - Display Uploaded Image and Extracted Text -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Extracted Text</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+  </head>
+  <body>
+    <div class="container">
+      <h5>Model Used: {{ model_name }}</h5>
+      <h5>Prompt Used: {{ prompt }}</h5>
+      <img src="{{ url_for('uploaded_file', filename=image_url.split('/')[-1]) }}" class="img-fluid mt-3">
+      <div class="mt-4">
+        <h5>Extracted Text:</h5>
+        <ul>
+          {% for text in text_segments %}
+            <li>{{ text }}</li>
+          {% endfor %}
+        </ul>
+        <h5>Extracted Text (JSON Format):</h5>
+        <pre>{{ text_segments | tojson(indent=2) }}</pre>
+      </div>
+      <a href="/" class="btn btn-secondary mt-3">Back to Upload Page</a>
+    </div>
+  </body>
+</html>
