@@ -82,7 +82,4 @@ Use a production WSGI server instead.
 After the application starts, open your browser and go to the URL shown in the output (usually http://127.0.0.1:5000) to access the application.
 
 
-### Explanation:
-- **Instruction**: Provides clear steps on how to run the application using the command `python app.py`.
-- **Sample Output**: Shows what the user will typically see in the terminal when starting a Flask application, including the URL (`http://127.0.0.1:5000`) where the application will be accessible.
 
