@@ -202,15 +202,21 @@ def extract_text_from_image(image, model_name, prompt):
     )
 
     # Remove input tokens if necessary
-    if model_name in ["microsoft/Phi-3.5-vision-instruct", "Qwen/Qwen2-VL-2B-Instruct"]:
-        output_ids = output_ids[:, inputs['input_ids'].shape[1]:]
+    #if model_name in ["microsoft/Phi-3.5-vision-instruct", "Qwen/Qwen2-VL-2B-Instruct"]:
+    output_ids = output_ids[:, inputs['input_ids'].shape[1]:]
 
     # Decode the output
     generated_text = processor.batch_decode(output_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
 
-      
+
     # Clean and process the generated text
     generated_text_clean = generated_text[0].strip()
+
+    # Remove the prompt from the generated text if present
+    if generated_text_clean.startswith(prompt):
+        generated_text_clean = generated_text_clean[len(prompt):].strip()
+
+    # Split the remaining text into segments
     text_segments = [line.strip() for line in generated_text_clean.split('\n') if line.strip()]
 
     
