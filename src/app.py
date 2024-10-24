@@ -34,8 +34,10 @@ ALLOWED_EXTENSIONS = {'jpeg', 'jpg', 'png', 'gif'}
 MODEL_CHOICES = {
     "google/paligemma-3b-mix-448": "float16",
     "Qwen/Qwen2-VL-2B-Instruct": "main",
-    "microsoft/Phi-3.5-vision-instruct": "main"
+    "microsoft/Phi-3.5-vision-instruct": "main",
+    "microsoft/Florence-2-large": "main"  # Added Florence-2-large model
 }
+
 
 # Load prompts from a file
 PROMPT_FILE = 'prompts.json'
@@ -49,6 +51,7 @@ else:
         "Extract texts from the image.",
         "Extract texts from the image and return each text string in a new line.",
         "Extract texts from the image and return each text string in a new line. The extracted text should be clean and readable.",
+        "<OCR_WITH_REGION>"
     ]
 
 @app.route('/add_prompt', methods=['POST'])
@@ -88,6 +91,17 @@ def load_model_and_processor(model_name, revision):
             _attn_implementation='eager'
         )
         processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True, num_crops=4)
+    elif model_name == "microsoft/Florence-2-large":
+        # Load Florence-2-large model and processor
+        # Load Florence-2-large model and processor with trust_remote_code=True
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+            trust_remote_code=True
+        ).to("cuda:0" if torch.cuda.is_available() else "cpu")
+        processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
+
+
     else:
         # Load other models using AutoModelForVision2Seq
         processor = AutoProcessor.from_pretrained(model_name, use_auth_token=api_token)
@@ -164,9 +178,50 @@ def download_prompts():
     response.headers['Content-Disposition'] = 'attachment; filename=prompts.json'
     return response
 
+import re
+
+def extract_text_strings(generated_text_with_special_tokens):
+    # Remove any leading <loc_...> tags from the start of the string
+    cleaned_text = re.sub(r'^(<loc_\d+>)+', '', generated_text_with_special_tokens)
+
+    # Print the cleaned text for debugging purposes
+    print("[DEBUG] Cleaned Text:", cleaned_text)
+
+    # Initialize an empty list to store individual text clusters
+    extracted_strings = []
+
+    # Use regex to find all meaningful text followed by location tags
+    # This matches meaningful text followed by any number of location tags
+    pattern = r'([^<]+)(?:<loc_\d+>)+'
+    
+    print("\n[DEBUG] Starting to match text clusters...\n")
+
+    matches = re.finditer(pattern, cleaned_text)
+
+    # Extract all the matched text clusters and store them
+    match_count = 0
+    for match in matches:
+        match_count += 1
+        matched_text = match.group(1).strip()
+        print(f"[DEBUG] Match {match_count}: '{matched_text}'")
+        extracted_strings.append(matched_text)
+
+    # If no matches were found, print a debug statement
+    if match_count == 0:
+        print("[DEBUG] No matches found! Please check if the pattern or input is correct.")
+
+    # Return the extracted strings as a list
+    return extracted_strings
+
+
+
 @app.route('/extract_text', methods=['POST'])
 def extract_text_from_image(image, model_name, prompt):
-    # Load the selected model and processor if not already loaded
+    # Determine the device and tensor precision
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+
+    # Handle different models
     if model_name == "Qwen/Qwen2-VL-2B-Instruct":
         # Properly format the prompt for Qwen2-VL-2B Instruct model
         messages = [
@@ -181,18 +236,35 @@ def extract_text_from_image(image, model_name, prompt):
             formatted_prompt,
             add_special_tokens=False,
             return_tensors='pt'
-        ).to(model.device)
+        ).to(device)
+
     elif model_name == "google/paligemma-3b-mix-448":
         # Handle text extraction for Paligemma model
-        image = image.resize((448, 448))  # Resizing to a common dimension that the model can handle
-        inputs = processor(images=image, text=prompt, return_tensors="pt").to(model.device)
-        inputs = {key: value.to('cuda') if torch.cuda.is_available() else value for key, value in inputs.items()}
+        image = image.resize((448, 448))  # Resize to compatible dimensions
+        inputs = processor(images=image, text=prompt, return_tensors='pt').to(device)
+
     elif model_name == "microsoft/Phi-3.5-vision-instruct":
-        # Handle text extraction  Phi-3.5-vision-instruct model
+        # Handle text extraction for Phi-3.5-vision-instruct model
         formatted_prompt = f"<|image_1|>\n{prompt}<|end|>\n<|assistant|>\n"
-        inputs = processor(formatted_prompt, [image], return_tensors='pt').to(model.device)
-    
-    # Generate output from the image
+        inputs = processor(formatted_prompt, [image], return_tensors='pt').to(device)
+
+    elif model_name == "microsoft/Florence-2-large":
+        
+        # Prepare inputs for the model using the specific Florence processor requirements
+        inputs = processor(
+            text=prompt,
+            images=image,
+            return_tensors='pt'
+        )
+
+        # Ensure the correct dtype for input tensors:
+        # - Keep `input_ids` as Long type, as required by the embedding layer
+        # - Convert `pixel_values` to the appropriate floating point precision (float16 or float32)
+        inputs["input_ids"] = inputs["input_ids"].to(device, dtype=torch.long)
+        if "pixel_values" in inputs:
+            inputs["pixel_values"] = inputs["pixel_values"].to(device, dtype=torch_dtype)
+
+    # Generate output from the image using the selected model
     logger.info("Generating output from the model...")
     output_ids = model.generate(
         **inputs,
@@ -201,25 +273,39 @@ def extract_text_from_image(image, model_name, prompt):
         do_sample=False  # Disable sampling to make the output more deterministic
     )
 
-    # Remove input tokens if necessary
-    #if model_name in ["microsoft/Phi-3.5-vision-instruct", "Qwen/Qwen2-VL-2B-Instruct"]:
+    # Remove input tokens if necessary (depends on the model type)
     output_ids = output_ids[:, inputs['input_ids'].shape[1]:]
 
-    # Decode the output
-    generated_text = processor.batch_decode(output_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
-
-
-    # Clean and process the generated text
-    generated_text_clean = generated_text[0].strip()
-
-    # Remove the prompt from the generated text if present
-    if generated_text_clean.startswith(prompt):
-        generated_text_clean = generated_text_clean[len(prompt):].strip()
-
-    # Split the remaining text into segments
-    text_segments = [line.strip() for line in generated_text_clean.split('\n') if line.strip()]
-
     
+    if model_name == "microsoft/Florence-2-large" and prompt == '<OCR_WITH_REGION>':
+         #Decode the output without removing special tokens
+        generated_text_with_special_tokens = processor.batch_decode(output_ids)
+
+        #Print the generated text with special tokens included
+        print("Generated Text (With Special Tokens):", generated_text_with_special_tokens[0])
+        text_segments  = extract_text_strings(generated_text_with_special_tokens[0])
+    else:
+        # Decode the output
+        generated_text = processor.batch_decode(output_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+
+        # Print the generated text before cleaning
+        print("Generated Text (Before Cleaning):", generated_text[0])
+        # Clean and process the generated text
+        generated_text_clean = generated_text[0].strip()
+
+        # Print the generated text after cleaning
+        print("Generated Text (After Cleaning):", generated_text_clean)
+
+
+        # Remove the prompt from the generated text if present
+        if generated_text_clean.startswith(prompt):
+            generated_text_clean = generated_text_clean[len(prompt):].strip()
+
+        # Print the generated text after cleaning
+        print("Generated Text (After prompt removal):", generated_text_clean)
+
+        # Split the remaining text into segments
+        text_segments = [line.strip() for line in generated_text_clean.split('\n') if line.strip()]
 
     # Free up CUDA memory
     del inputs
@@ -233,7 +319,9 @@ def extract_text_from_image(image, model_name, prompt):
                 torch.cuda.empty_cache()
 
     gc.collect()  # Python garbage collection
+
     return text_segments
+
 
 # Route to serve uploaded files
 @app.route('/uploads/<filename>')
