@@ -2,10 +2,11 @@ A simple flask web app to evaluate small VLMs (Vision Language Models). Currentl
 - google/paligemma-3b-mix-448
 - Qwen/Qwen2-VL-2B-Instruct
 - microsoft/Phi-3.5-vision-instruct
+- microsoft/Florence-2-large
 
 The application with VLM running loaded and inferencing locally was tested on a consumer grade desktop with following configuration.
 
-_Overall the base Qwen/Qwen2-VL-2B-Instruct model performed the best with very good accuracy for extracting text from images._
+
 
 ## System Information
 
