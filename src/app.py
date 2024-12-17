@@ -35,7 +35,8 @@ MODEL_CHOICES = {
     "google/paligemma-3b-mix-448": "float16",
     "Qwen/Qwen2-VL-2B-Instruct": "main",
     "microsoft/Phi-3.5-vision-instruct": "main",
-    "microsoft/Florence-2-large": "main"  # Added Florence-2-large model
+    "microsoft/Florence-2-large": "main",  # Added Florence-2-large model
+    "google/paligemma2-3b-pt-896": "main"  # Added paligemma2-3b-pt-896 model
 }
 
 
@@ -51,7 +52,9 @@ else:
         "Extract texts from the image.",
         "Extract texts from the image and return each text string in a new line.",
         "Extract texts from the image and return each text string in a new line. The extracted text should be clean and readable.",
-        "<OCR_WITH_REGION>"
+        "<OCR_WITH_REGION>",
+        "<OCR>",
+        "Extract all text from the image and return each text string in a JSON array."
     ]
 
 @app.route('/add_prompt', methods=['POST'])
@@ -238,7 +241,7 @@ def extract_text_from_image(image, model_name, prompt):
             return_tensors='pt'
         ).to(device)
 
-    elif model_name == "google/paligemma-3b-mix-448":
+    elif model_name == "google/paligemma-3b-mix-448" or model_name == "google/paligemma2-3b-pt-896":
         # Handle text extraction for Paligemma model
         image = image.resize((448, 448))  # Resize to compatible dimensions
         inputs = processor(images=image, text=prompt, return_tensors='pt').to(device)
