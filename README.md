@@ -3,6 +3,8 @@ A simple flask web app to evaluate small VLMs (Vision Language Models). Currentl
 - Qwen/Qwen2-VL-2B-Instruct
 - microsoft/Phi-3.5-vision-instruct
 - microsoft/Florence-2-large
+- google/paligemma2-3b-pt-896
+- microsoft/kosmos-2.5
 
 The application with VLM running loaded and inferencing locally was tested on a consumer grade desktop with following configuration.
 

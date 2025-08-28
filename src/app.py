@@ -4,6 +4,7 @@ import os
 import requests
 import configparser
 from transformers import AutoModelForCausalLM, AutoProcessor, AutoModelForVision2Seq, AutoConfig, Qwen2VLForConditionalGeneration
+from transformers import Kosmos2ForConditionalGeneration, Kosmos2Processor  # Added for KOSMOS-2.5
 from PIL import Image
 import torch
 import logging
@@ -36,7 +37,8 @@ MODEL_CHOICES = {
     "Qwen/Qwen2-VL-2B-Instruct": "main",
     "microsoft/Phi-3.5-vision-instruct": "main",
     "microsoft/Florence-2-large": "main",  # Added Florence-2-large model
-    "google/paligemma2-3b-pt-896": "main"  # Added paligemma2-3b-pt-896 model
+    "google/paligemma2-3b-pt-896": "main",  # Added paligemma2-3b-pt-896 model
+    "microsoft/kosmos-2.5": "main"  # Added KOSMOS-2.5 model
 }
 
 
@@ -104,6 +106,15 @@ def load_model_and_processor(model_name, revision):
         ).to("cuda:0" if torch.cuda.is_available() else "cpu")
         processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
 
+    elif model_name == "microsoft/kosmos-2.5":
+        # Load KOSMOS-2.5 model and processor
+        model = Kosmos2ForConditionalGeneration.from_pretrained(
+            model_name,
+            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+            device_map="auto" if torch.cuda.is_available() else None,
+            use_auth_token=api_token
+        )
+        processor = Kosmos2Processor.from_pretrained(model_name, use_auth_token=api_token)
 
     else:
         # Load other models using AutoModelForVision2Seq
@@ -266,6 +277,16 @@ def extract_text_from_image(image, model_name, prompt):
         inputs["input_ids"] = inputs["input_ids"].to(device, dtype=torch.long)
         if "pixel_values" in inputs:
             inputs["pixel_values"] = inputs["pixel_values"].to(device, dtype=torch_dtype)
+
+    elif model_name == "microsoft/kosmos-2.5":
+        # Handle text extraction for KOSMOS-2.5 model
+        # KOSMOS-2 typically expects a specific prompt format
+        formatted_prompt = f"<grounding>An image of {prompt}"
+        inputs = processor(
+            text=formatted_prompt,
+            images=image,
+            return_tensors='pt'
+        ).to(device)
 
     # Generate output from the image using the selected model
     logger.info("Generating output from the model...")
